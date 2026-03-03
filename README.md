@@ -106,7 +106,7 @@ Run a minimal smoke test to verify everything works:
 ```bash
 mix droid.smoke "Say hello"
 mix droid.smoke "Summarize this repo" --cwd /path --timeout 30000
-mix droid.smoke "Create a test file" --auto high --model claude-3-5-sonnet-20241022
+mix droid.smoke "Create a test file" --auto high --model gemini-3-flash-preview
 ```
 
 Options:
@@ -128,7 +128,7 @@ Options:
 ```elixir
 {:ok, events} = Jido.Droid.run("Refactor this module", 
   cwd: "/path/to/project",
-  model: "claude-3-5-sonnet-20241022",
+  model: "gemini-3-flash-preview",
   auto: "high",
   allowed_tools: ["Read", "Edit", "Bash"]
 )
@@ -142,7 +142,7 @@ alias Jido.Harness.RunRequest
 request = RunRequest.new!(%{
   prompt: "Add tests for the user module",
   cwd: "/path/to/project",
-  model: "claude-3-5-sonnet-20241022",
+  model: "gemini-3-flash-preview",
   metadata: %{
     "session_id" => "my-session-123",
     "reasoning_effort" => "high"
@@ -226,7 +226,7 @@ metadata: %{
   "session_id" => "custom-session-id",
   "reasoning_effort" => "high",
   "disabled_tools" => "ToolA,ToolB",
-  "spec_model" => "claude-3-5-sonnet-20241022",
+  "spec_model" => "gemini-3-flash-preview",
   "use_spec" => true
 }
 ```
