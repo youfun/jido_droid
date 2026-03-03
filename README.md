@@ -1,10 +1,16 @@
 # Jido.Droid
 
-Factory Droid CLI adapter for [Jido.Harness](https://github.com/agentjido/jido_harness).
+`Jido.Droid` is the Factory Droid CLI adapter for [Jido.Harness](https://github.com/agentjido/jido_harness).
 
-## Status
+It provides:
+- `Jido.Harness.Adapter` implementation (`Jido.Droid.Adapter`)
+- Normalized streaming event mapping (`Jido.Droid.Mapper`)
+- Port-based CLI communication with JSONL stream parsing
+- Compatibility/install/smoke mix tasks
+- Full integration with Jido ecosystem
+- Runtime compatibility checks and diagnostics
 
-⚠️ **Early development** — API is subject to change.
+
 
 ## Installation
 
@@ -14,16 +20,17 @@ Add `jido_droid` and `jido_harness` to your list of dependencies in `mix.exs`:
 def deps do
   [
     {:jido_harness, "~> 0.1"},
-    {:jido_droid, "~> 0.1"}
+    {:jido_droid, github: "youfun/jido_droid"}
   ]
 end
 ```
 
+**Note**: `jido_droid` is not yet published to Hex. Use the GitHub dependency until the first release.
+
 ## Requirements
 
 - Elixir `~> 1.18`
-- Droid CLI installed and authenticated
-- `FACTORY_API_KEY` environment variable set
+- Droid CLI installed and authenticated (via CLI login or `FACTORY_API_KEY` environment variable)
 
 ## Quick Start
 
@@ -39,11 +46,19 @@ Or check if already installed:
 mix droid.install
 ```
 
-### 2) Set API Key
+### 2) Authenticate
 
+**Option A: Use Droid CLI authentication (recommended)**
+```bash
+droid  # Follow the login prompts
+```
+
+**Option B: Set API key directly**
 ```bash
 export FACTORY_API_KEY=your_api_key_here
 ```
+
+Get your API key from: https://app.factory.ai/settings
 
 ### 3) Verify compatibility
 
@@ -150,14 +165,66 @@ Droid emits the following normalized event types:
 | `:tool_result` | Tool execution result |
 | `:result` | Session completed |
 
-## Metadata Options
+## Event Mapping
 
-The `metadata` field in `RunRequest` supports Droid-specific options:
+Droid stream events are normalized to `Jido.Harness.Event` with:
+- `provider: :droid`
+- ISO-8601 `timestamp` (when available)
+- Raw event passthrough in `raw` field
+- Standardized `payload` structure
 
+Canonical event types include:
+- `:system` - Session initialization with model info
+- `:user_message` - User prompt
+- `:assistant_message` - AI response text
+- `:tool_use` - Tool invocation by Droid
+- `:tool_result` - Tool execution result
+- `:result` - Session completion
+
+Example event structure:
+```elixir
+%Jido.Harness.Event{
+  provider: :droid,
+  type: :assistant_message,
+  session_id: "bee5e827-a0b5-44cb-a82f-25c3833ac734",
+  timestamp: ~U[2026-03-03 11:12:22.695Z],
+  payload: %{
+    "id" => "e6db5bdc-ed6e-491c-aacd-6f45a280ecf5",
+    "role" => "assistant",
+    "text" => "Hello!"
+  },
+  raw: %{...}  # Original Droid CLI event
+}
+```
+
+## Metadata Contract
+
+`Jido.Droid.Adapter` reads provider-specific runtime controls from `request.metadata`.
+
+Supported keys:
+- `"session_id"` - Custom session identifier (string)
+- `"reasoning_effort"` - Reasoning level: `"low"` | `"medium"` | `"high"`
+- `"disabled_tools"` - Comma-separated tool names to disable (string)
+- `"spec_model"` - Model to use for spec mode (string)
+- `"use_spec"` - Enable spec mode (boolean)
+
+Precedence order:
+1. Runtime adapter options
+2. Metadata values
+3. Defaults derived from `RunRequest`
+
+Default mapping from `RunRequest`:
+- `prompt` → CLI prompt argument
+- `cwd` → working directory
+- `model` → `--model` flag
+- `timeout_ms` → process timeout
+- `allowed_tools` → `--enabled-tools` flag
+
+Example:
 ```elixir
 metadata: %{
   "session_id" => "custom-session-id",
-  "reasoning_effort" => "low" | "medium" | "high",
+  "reasoning_effort" => "high",
   "disabled_tools" => "ToolA,ToolB",
   "spec_model" => "claude-3-5-sonnet-20241022",
   "use_spec" => true
@@ -190,6 +257,117 @@ mix droid.smoke "Say hello"
 mix deps.get
 mix test
 mix quality
+```
+
+### Interactive Playground
+
+The project includes an interactive web-based playground for testing and exploring Jido.Droid:
+
+```bash
+elixir playground_droid.exs
+```
+
+Then open http://localhost:5006 in your browser.
+
+**Features:**
+- Live event stream visualization
+- Configure all Droid options (model, auto level, reasoning effort, tools)
+- View normalized `Jido.Harness.Event` structures
+- Inspect raw Droid CLI events
+- Session history tracking
+- Real-time tool call monitoring
+
+The playground demonstrates:
+- How Droid CLI JSONL events are normalized to Harness events
+- Event types: `:system`, `:user_message`, `:assistant_message`, `:tool_use`, `:tool_result`, `:result`
+- Timestamp conversion (milliseconds → ISO-8601)
+- Payload standardization and field mapping
+- Session ID consistency across events
+
+Perfect for understanding the event flow and testing different configurations before integrating into your application.
+
+### Integration Tests
+
+Integration tests are opt-in and excluded by default (`@tag :integration`).
+
+To run integration tests:
+```bash
+mix test --include integration
+```
+
+**Note**: Integration tests require:
+- Droid CLI installed
+- Authenticated (via CLI login or `FACTORY_API_KEY`)
+- Will consume API credits
+
+## Limitations
+
+- **No cancellation support** - Droid CLI does not support session-level cancellation. The `cancel/1` function returns `{:error, :not_supported}`. To stop a running Droid process, you must terminate the OS process directly.
+- **CLI dependency** - Requires Droid CLI to be installed and in PATH
+- **Authentication required** - Must authenticate via Droid CLI login or `FACTORY_API_KEY` environment variable
+- **Network required** - CLI communicates with Factory API
+- **Process-based** - Each run spawns a new Droid CLI process
+
+## Troubleshooting
+
+### CLI not found
+```bash
+# Check if droid is in PATH
+which droid  # Unix/Mac
+where droid  # Windows
+
+# Install Droid CLI
+curl -fsSL https://app.factory.ai/cli | sh
+```
+
+### Authentication issues
+
+**Check authentication status:**
+```bash
+droid --version  # Should work if authenticated
+```
+
+**Option 1: Use Droid CLI login (recommended)**
+```bash
+droid  # Follow login prompts
+```
+
+**Option 2: Use API key**
+```bash
+# Check if API key is set
+echo $FACTORY_API_KEY  # Unix/Mac
+echo %FACTORY_API_KEY%  # Windows
+
+# Set API key
+export FACTORY_API_KEY=your_key_here  # Unix/Mac
+set FACTORY_API_KEY=your_key_here     # Windows
+```
+
+Get your API key from: https://app.factory.ai/settings
+
+### Compatibility issues
+```bash
+# Run diagnostics
+mix droid.compat
+
+# Check version
+droid --version
+
+# Verify installation
+mix droid.install
+```
+
+### Stream parsing errors
+If you encounter JSONL parsing errors:
+- Ensure Droid CLI is up to date
+- Check `mix droid.compat` for version compatibility
+- Verify network connectivity to Factory API
+
+### Timeout issues
+If runs timeout frequently:
+```elixir
+# Increase timeout (default is 60000ms)
+Jido.Droid.run("long task", timeout_ms: 300_000)
 ```
 
 ## License
