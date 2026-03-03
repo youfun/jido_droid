@@ -132,7 +132,5 @@ defmodule Jido.Droid.Adapter do
     Application.get_env(:jido_droid, :stream_module, Stream)
   end
 
-  defp mapper_module do
-    Application.get_env(:jido_droid, :mapper_module, Mapper)
-  end
+
 end
